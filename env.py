@@ -1,0 +1,5 @@
+IP_HOST=""
+USER=""
+PWD=""
+REMOTE_BASE_PATH=""
+LOCAL_PATH=""
