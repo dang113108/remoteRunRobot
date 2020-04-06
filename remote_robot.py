@@ -31,33 +31,40 @@ def shell_caller(cmd):
                             stderr=subprocess.PIPE,
                             encoding="utf-8")
     out, err = resp.communicate()
-    if resp.poll() == 0:
-        return out
-    else:
-        return err
+    return out if resp.poll() == 0 else err
+
+
+def ssh_shell_caller(cmd):
+    try:
+        ssh = ssh_connect()
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        return stdout.read().decode() if stdout.channel.recv_exit_status() == 0 else stderr.read().decode()
+    finally:
+        ssh.close()
 
 
 def git_local_file_diff(project, first, second):
     cmd = "git -C {}/{project} diff --name-only {first} {second}".format(
-        LOCAL_PATH,**locals())
+        LOCAL_PATH, **locals())
     resp = shell_caller(cmd)
-    return resp.split("\n")
+    return list(filter(None, resp.split("\n")))
 
 
 def git_current_commit(project, branch, remote=False):
     if remote:
-        ssh = ssh_connect()
-        ssh.exec_command("git -C {}/{project} pull && git -C {}/{project} checkout {branch}".format(REMOTE_BASE_PATH, REMOTE_BASE_PATH, LOCAL_PATH, **locals()))
-        commit=ssh.exec_command("git -C {}/{project} rev-parse HEAD".format(
+        out = ssh_shell_caller("git -C {}/{project} pull && git -C {}/{project} checkout {branch}".format(
+            REMOTE_BASE_PATH, REMOTE_BASE_PATH, LOCAL_PATH, **locals()))
+        out = ssh_shell_caller("git -C {}/{project} rev-parse HEAD".format(
             REMOTE_BASE_PATH, **locals()))
-        ssh.close()
+        commit = out
     else:
         shell_caller(
             "git -C {}/{project} pull && git -C {}/{project} checkout {branch}"
             .format(LOCAL_PATH, LOCAL_PATH, **locals()))
-        commit = shell_caller("git -C {}/{project} rev-parse HEAD".format(
+        out = shell_caller("git -C {}/{project} rev-parse HEAD".format(
             LOCAL_PATH, **locals()))
-    return "".join(commit.split("\n"))
+        commit = "".join(out.split("\n"))
+    return commit
 
 
 @click.group()
@@ -68,15 +75,11 @@ def cli():
 @click.command("test", help="test option")
 @click.option("-p", "--project", help="The folder need to run")
 @click.option("-b", "--branch", help="The branch need to run")
-@click.option("-r",
-              "--remote",
-              default=None,
-              required=False,
-              help="The remote need to run")
-def test(project, branch, remote):
+def test(project, branch):
     first = git_current_commit(project, branch)
-    second = git_current_commit(project, branch, remote)
-    git_local_file_diff(project, first, second)
+    second = git_current_commit(project, branch, remote=True)
+    resp = git_local_file_diff(project, first, second)
+    print(resp)
 
 
 @click.command("robot", help="Remote the robot command by ssh")
