@@ -47,15 +47,17 @@ def git_local_file_diff(project, first, second):
 def git_current_commit(project, branch, remote=False):
     if remote:
         ssh = ssh_connect()
-        pre_cmd = "{REMOTE_BASE_PATH}/{project} git pull".format(locals())
+        ssh.exec_command("git -C {}/{project} pull && git -C {}/{project} checkout {branch}".format(REMOTE_BASE_PATH, REMOTE_BASE_PATH, LOCAL_PATH, **locals()))
+        commit=ssh.exec_command("git -C {}/{project} rev-parse HEAD".format(
+            REMOTE_BASE_PATH, **locals()))
         ssh.close()
     else:
         shell_caller(
             "git -C {}/{project} pull && git -C {}/{project} checkout {branch}"
             .format(LOCAL_PATH, LOCAL_PATH, **locals()))
-        out = shell_caller("git -C {}/{project} rev-parse HEAD".format(
+        commit = shell_caller("git -C {}/{project} rev-parse HEAD".format(
             LOCAL_PATH, **locals()))
-    return "".join(out.split("\n"))
+    return "".join(commit.split("\n"))
 
 
 @click.group()
@@ -72,9 +74,9 @@ def cli():
               required=False,
               help="The remote need to run")
 def test(project, branch, remote):
-    first = git_current_commit(project, branch, remote)
-    git_local_file_diff(project,first,"b6d77b68b030bd4d38947f3cc7b981f6037c6f1f")
-    print(first)
+    first = git_current_commit(project, branch)
+    second = git_current_commit(project, branch, remote)
+    git_local_file_diff(project, first, second)
 
 
 @click.command("robot", help="Remote the robot command by ssh")
