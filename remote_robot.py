@@ -33,6 +33,16 @@ def sync_remote_file(localpath, remotepath):
             scp.put(local, remote)
         logging.info("Sync complete")
 
+def git_status(path, status):
+    if not path:
+        path = os.getcwd()
+    r = shell_caller("git -C {} status -s".format(path))
+    lines = []
+    for line in r.splitlines():
+        if re.match(r'(%s) (?P<file>\w+)'%(status),line):
+            lines.append(re.match(r'(%s) (?P<file>.+)'%(status),line).group("file"))
+    return lines
+
 
 def ssh_copy(method, localpath, remotepath):
     try:
@@ -65,7 +75,10 @@ def shell_caller(cmd):
 def ssh_shell_caller(cmd):
     try:
         ssh = ssh_connect()
-        stdin, stdout, stderr = ssh.exec_command(cmd)
+        if re.match(r'sudo', cmd):
+            stdin, stdout, stderr = ssh.exec_command(cmd,get_pty=True)
+        else:
+            stdin, stdout, stderr = ssh.exec_command(cmd)
         out=stdout.read().decode()
         err=stderr.read().decode()
         logging.info(out if stdout.channel.recv_exit_status(
@@ -80,15 +93,21 @@ def git_local_file_diff(project, first, second):
         LOCAL_PATH, **locals())
     resp = shell_caller(cmd)
     diff_file=list(filter(None, resp.split("\n")))
-    status = git_status.Status("{}/{project}".format(LOCAL_PATH, **locals()))
-    diff_file.extend(status.M)
+    # use class
+    status_string=[" M","A ","\?\?"," R"]
+    status_list = list(filter(None,[git_status("{}/{}".format(LOCAL_PATH, project),status) for status in status_string]))
+    # list(map(git_status("{}/{project}".format(LOCAL_PATH, **locals())," M")
+    [diff_file.extend(x) for x in status_list]
+    # map(lambda x: diff_file.extend(x),status_list)
+
+    # diff_file.extend(status.M)
     # diff_file.extend(status.untracked) -->git status -s "??" not " ??"
-    diff_file.extend(status.A)
-    diff_file.extend(status.R)
+    # diff_file.extend(status.A)
+    # diff_file.extend(status.R)
     logging.info("---------* Diff Files: *---------")
     logging.info(diff_file)
     return diff_file
-
+    # -------------------------
 
 def git_current_commit(project, branch, remote=False):
     if remote:
@@ -154,9 +173,6 @@ def remote_robot(command, branch):
         sync_remote_file(local_files,remote_files)
         ssh_shell_caller(command)
         get_remote_report_folder(project)        
-
-
-
 
     finally:
         # git_clean_and_back_to_branch(branch)
